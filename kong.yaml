@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: konga
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-deploy
+  namespace: konga
+  annotations:
+    api-dev.espylid.com/team: customendpoints
+    api-dev-espylid.com.net/environment: Development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kong
+  template:
+    metadata:
+      labels:
+        app: kong
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: cluster-k-1-control-plane
+      containers:
+        - name: kong
+          image: kong:latest
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            readOnlyRootFilesystem: false
+          env:
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: "/dev/stdout"
+            - name: KONG_ADMIN_ERROR_LOG
+              value: "/dev/stderr"
+            - name: KONG_ADMIN_LISTEN
+              value: "0.0.0.0:8001, 0.0.0.0:8444 ssl"
+            - name: KONG_DATABASE
+              value: postgres
+            - name: KONG_PG_DATABASE
+              value: kong
+            - name: KONG_PG_HOST
+              value: postgres
+            - name: KONG_PG_PORT
+              value: "5432"
+            - name: KONG_PG_PASSWORD
+              value: "kongpass"
+            - name: KONG_PG_USER
+              value: pguser
+            - name: KONG_PROXY_ACCESS_LOG
+              value: "/dev/stdout"
+            - name: KONG_PROXY_ERROR_LOG
+              value: "/dev/stderr"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+          ports:
+            - containerPort: 8000
+              name: gateway
+            - containerPort: 8001
+              name: kongadmin
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+      initContainers:
+        - name: kong-migrations
+          image: kong:latest
+          imagePullPolicy: "IfNotPresent"
+          command: ['kong', 'migrations', 'bootstrap']
+          env:
+            - name: KONG_DATABASE
+              value: postgres
+            - name: KONG_PG_DATABASE
+              value: kong
+            - name: KONG_PG_HOST
+              value: postgres
+            - name: KONG_PG_PORT
+              value: "5432"
+            - name: KONG_PG_USER
+              value: pguser
+            - name: KONG_PG_PASSWORD
+              value: "kongpass"
+            - name: KONG_PASSWORD
+              value: "kongpass"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kong
+  name: kong-svc
+  namespace: konga
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+      name: http
+      nodePort: 30006
+  type: NodePort
+  selector:
+    app: kong
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kong
+  name: kongadmin-svc
+  namespace: konga
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8001
+      name: http
+      nodePort: 30007
+  type: NodePort
+  selector:
+    app: kong
